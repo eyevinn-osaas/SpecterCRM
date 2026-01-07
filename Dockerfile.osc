@@ -1,0 +1,72 @@
+# Multi-stage build for SpecterCRM OSC deployment
+FROM node:18-alpine AS backend-builder
+
+WORKDIR /app/backend
+COPY backend/package*.json ./
+# Install all dependencies (including dev) for building
+RUN npm ci
+
+COPY backend/ .
+# Generate Prisma client before building
+RUN npx prisma generate
+RUN npm run build
+
+# Frontend builder
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ .
+# Remove .env.production to ensure VITE_API_URL defaults to '/api'
+RUN rm -f .env.production
+RUN npm run build
+
+# Production stage
+FROM node:18-alpine
+
+# Install nginx and other dependencies
+RUN apk add --no-cache nginx gettext
+
+# Create app directory
+WORKDIR /app
+
+# Copy backend package files for production dependencies
+COPY --from=backend-builder /app/backend/package*.json ./backend/
+
+# Install production dependencies and tsx for seeding
+RUN cd backend && npm ci --omit=dev && npm install tsx
+
+# Copy backend build files and generated Prisma client
+COPY --from=backend-builder /app/backend/dist ./backend/dist
+COPY --from=backend-builder /app/backend/node_modules/.prisma ./backend/node_modules/.prisma
+COPY backend/prisma ./backend/prisma
+
+# Copy frontend build
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
+# Create nginx directories and set permissions
+RUN mkdir -p /var/log/nginx /var/lib/nginx/tmp /run/nginx && \
+    chown -R node:node /var/log/nginx /var/lib/nginx /run/nginx /etc/nginx
+
+# Copy nginx configuration template
+COPY nginx.conf.template /etc/nginx/nginx.conf.template
+
+# Copy entrypoint script
+COPY osc-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/osc-entrypoint.sh
+
+# Create logs directory and symlink to stdout/stderr for container logging
+RUN mkdir -p /app/backend/logs && \
+    ln -sf /proc/1/fd/1 /app/backend/logs/combined.log && \
+    ln -sf /proc/1/fd/2 /app/backend/logs/error.log && \
+    chown -R node:node /app
+
+# Switch to non-root user
+USER node
+
+# Expose port (will be set by PORT env var)
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/osc-entrypoint.sh"]
