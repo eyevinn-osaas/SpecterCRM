@@ -7,9 +7,8 @@ COPY backend/package*.json ./
 RUN npm ci
 
 COPY backend/ .
-# Generate Prisma client before building
+# Generate Prisma client (no tsc build needed - using tsx at runtime)
 RUN npx prisma generate
-RUN npm run build
 
 # Frontend builder
 FROM node:18-alpine AS frontend-builder
@@ -38,8 +37,9 @@ COPY --from=backend-builder /app/backend/package*.json ./backend/
 # Install production dependencies and tsx for seeding
 RUN cd backend && npm ci --omit=dev && npm install tsx
 
-# Copy backend build files and generated Prisma client
-COPY --from=backend-builder /app/backend/dist ./backend/dist
+# Copy backend source files (using tsx at runtime to avoid tsc OOM during build)
+COPY --from=backend-builder /app/backend/src ./backend/src
+COPY --from=backend-builder /app/backend/tsconfig.json ./backend/tsconfig.json
 COPY --from=backend-builder /app/backend/node_modules/.prisma ./backend/node_modules/.prisma
 COPY backend/prisma ./backend/prisma
 

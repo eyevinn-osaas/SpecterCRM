@@ -110,4 +110,4 @@ nginx
 # Start the backend API server
 echo "Starting backend server..."
 cd /app/backend
-exec node dist/index.js
+exec npx tsx src/index.ts
