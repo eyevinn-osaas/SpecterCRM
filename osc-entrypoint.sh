@@ -24,13 +24,19 @@ fi
 export JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-8h}
 export REFRESH_TOKEN_EXPIRES_IN=${REFRESH_TOKEN_EXPIRES_IN:-7d}
 
-# Set server name and CORS origin based on OSC_HOSTNAME or default
+# Accept any hostname so CNAME custom domains work at the nginx level
+export SERVER_NAME="_"
+
+# Set CORS origin based on OSC_HOSTNAME and any pre-configured CORS_ORIGIN
 if [ -n "$OSC_HOSTNAME" ]; then
-    export SERVER_NAME="$OSC_HOSTNAME"
-    export CORS_ORIGIN="https://$OSC_HOSTNAME"
+    if [ -n "$CORS_ORIGIN" ]; then
+        # If CORS_ORIGIN is already set (e.g. custom domain), append OSC hostname
+        export CORS_ORIGIN="$CORS_ORIGIN,https://$OSC_HOSTNAME"
+    else
+        export CORS_ORIGIN="https://$OSC_HOSTNAME"
+    fi
 else
-    export SERVER_NAME="_"
-    export CORS_ORIGIN="http://localhost:$NGINX_PORT"
+    export CORS_ORIGIN="${CORS_ORIGIN:-http://localhost:$NGINX_PORT}"
 fi
 
 echo "Starting SpecterCRM OSC container..."
