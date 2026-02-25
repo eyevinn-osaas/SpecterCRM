@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { JWTPayload } from '../../utils/auth';
 import { NoteService } from '../../services/note.service';
 import { NoteEntityType } from '@prisma/client';
+import { WrapToolHandler } from '../server';
 
-export function registerNoteTools(server: McpServer, auth: JWTPayload, wrapToolHandler: any) {
+export function registerNoteTools(server: McpServer, auth: JWTPayload, wrapToolHandler: WrapToolHandler) {
   server.tool(
     'create_note',
     'Create a note attached to an organization, contact, or deal',
@@ -22,6 +23,26 @@ export function registerNoteTools(server: McpServer, auth: JWTPayload, wrapToolH
         },
         auth.tenantId,
         auth.userId
+      );
+    })
+  );
+
+  server.tool(
+    'list_notes',
+    'List all notes for a specific entity',
+    {
+      entityType: z.enum(['ORGANIZATION', 'CONTACT', 'DEAL']).describe('Entity type (required)'),
+      entityId: z.string().describe('Entity ID (required)'),
+      page: z.number().optional().describe('Page number (default: 1)'),
+      limit: z.number().optional().describe('Results per page (default: 20)'),
+    },
+    wrapToolHandler(async (params: any) => {
+      return NoteService.findByEntityPaginated(
+        params.entityType as NoteEntityType,
+        params.entityId,
+        auth.tenantId,
+        params.page,
+        params.limit
       );
     })
   );
@@ -46,6 +67,18 @@ export function registerNoteTools(server: McpServer, auth: JWTPayload, wrapToolH
     },
     wrapToolHandler(async (params: any) => {
       return NoteService.update(params.id, params.content, auth.tenantId, auth.userId);
+    })
+  );
+
+  server.tool(
+    'delete_note',
+    'Delete a note',
+    {
+      id: z.string().describe('Note ID'),
+    },
+    wrapToolHandler(async (params: any) => {
+      await NoteService.delete(params.id, auth.tenantId, auth.userId);
+      return { success: true, message: 'Note deleted successfully' };
     })
   );
 }

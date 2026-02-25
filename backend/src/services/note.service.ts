@@ -1,5 +1,6 @@
 import prisma from '../config/database';
 import { AppError } from '../middleware/errorHandler';
+import { AuditService } from './audit.service';
 import { NoteEntityType } from '@prisma/client';
 
 export class NoteService {
@@ -47,6 +48,41 @@ export class NoteService {
     return notes;
   }
 
+  static async findByEntityPaginated(
+    entityType: NoteEntityType,
+    entityId: string,
+    tenantId: string,
+    page = 1,
+    limit = 20
+  ) {
+    const skip = (page - 1) * limit;
+    const where = { tenantId, entityType, entityId };
+
+    const [notes, total] = await Promise.all([
+      prisma.note.findMany({
+        where,
+        include: {
+          createdBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+          updatedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.note.count({ where }),
+    ]);
+
+    return {
+      data: notes,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
   static async findById(id: string, tenantId: string) {
     const note = await prisma.note.findFirst({
       where: { id, tenantId },
@@ -83,9 +119,20 @@ export class NoteService {
     return note;
   }
 
-  static async delete(id: string, tenantId: string) {
-    await this.findById(id, tenantId);
+  static async delete(id: string, tenantId: string, userId?: string) {
+    const note = await this.findById(id, tenantId);
     await prisma.note.delete({ where: { id } });
+
+    if (userId) {
+      await AuditService.log({
+        tenantId,
+        userId,
+        entityType: 'NOTE',
+        entityId: id,
+        action: 'DELETE',
+        beforeData: { content: note.content, entityType: note.entityType, entityId: note.entityId },
+      });
+    }
   }
 
   private static async validateEntity(

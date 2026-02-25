@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { JWTPayload } from '../../utils/auth';
 import { DealService } from '../../services/deal.service';
 import { DealStage } from '@prisma/client';
+import { WrapToolHandler } from '../server';
 
-export function registerDealTools(server: McpServer, auth: JWTPayload, wrapToolHandler: any) {
+export function registerDealTools(server: McpServer, auth: JWTPayload, wrapToolHandler: WrapToolHandler) {
   server.tool(
     'list_deals',
     'List all deals with optional filtering, search, and pagination',
@@ -133,15 +134,6 @@ export function registerDealTools(server: McpServer, auth: JWTPayload, wrapToolH
     wrapToolHandler(async (params: any) => {
       await DealService.delete(params.id, auth.tenantId, auth.userId);
       return { success: true, message: 'Deal deleted successfully' };
-    })
-  );
-
-  server.tool(
-    'get_pipeline_summary',
-    'Get a summary of the deal pipeline (count and total amount by stage)',
-    {},
-    wrapToolHandler(async () => {
-      return DealService.getPipeline(auth.tenantId);
     })
   );
 }
